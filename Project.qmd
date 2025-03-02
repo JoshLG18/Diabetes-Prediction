@@ -31,6 +31,8 @@ from sklearn.svm import SVC
 import statsmodels.api as sm
 ```
 
+### Link to GitHub Repository = <https://github.com/JoshLG18/Diabetes-Prediction>
+
 \newpage
 
 ## **1. Introduction**
