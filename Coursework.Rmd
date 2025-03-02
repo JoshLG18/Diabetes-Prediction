@@ -1,0 +1,568 @@
+---
+title: "**Which factors are the strongest predictors of diabetes, and how accurately
+  can these predictors classify diabetes outcomes?**"
+output:
+  pdf_document: default
+author: "**720017170**"
+subtitle: "**Word Count - 2282**"
+bibliography: references.bib  
+csl: harvard-exeter.csl
+classoption: titlepage
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+```{r message = FALSE, warning = FALSE}
+library(tidyverse)
+library(gridExtra)
+library(grid)
+library(caret)
+library(randomForest)
+library(e1071)
+library(vtable)
+```
+\newpage
+## **Introduction** 
+Diabetes is a major global health issue with widespread implications for healthcare systems [@Yang:2024]. It can lead to medical complications, including cardiovascular disease, kidney failure, and neuropathy. Due to the increasing instances of diabetes, there is a need for reliable early detection methods to inform preventative healthcare strategies [@Hoppe:2024]. Understanding the most effective predictors of diabetes can help healthcare practitioners prioritize resources for high-risk individuals. Furthermore, there has been research showing that many chronic conditions share common risk factors [@Da_Silva:2024]. Finding out these common predictors can help improve management techniques.
+
+This study aims to identify key predictors of diabetes by comparing three machine learning models; logistic regression, random forests, and support vector machines (SVM). Each model will complete different objectives; logistic regression for interpreting predictor significance and calculating odds ratios, random forest for identifying the most important factors, and SVM for identifying non-linear relationships and evaluating the performance of the prediction.
+
+The analysis is expected to identify the most important predictive factors for diabetes and evaluate each model’s classification accuracy. Conclusions from this study may contribute to the development of intervention strategies for diabetes and support broader healthcare goals to decrease the condition's impact.
+
+
+## **Methods**
+
+The aim of this study is to determine the most significant predictors of diabetes and how accurately the given factors predict diabetes using R.
+
+The research questions are: 
+
+1. Which factors are the strongest predictors of diabetes?
+
+2. How accurately can these factors classify diabetes status?
+
+3. Which model most accurately classifies diabetes status?
+
+The first step of this research was to prepare the data for any analysis that was to be conducted. This involved handling missing valued by replacing them with means for the variable to maintain the size of the dataset as 49% of the rows has missing values. Continuous variables were normalised to ensure comparability across the predictors. The next step of the study was exploratory data analysis (EDA). This allows an understanding of the data set and the identification of any potential patterns or outliers. Descriptive statistics were calculated to describe the data e.g. mean, median, and standard deviation, and distributions were assessed using bar charts showing the distribution of diabetes status grouped by key predictors.
+
+Three models were selected to assess the research questions. Logistic regression was used to provide odds ratios that can quantify the relationship between predictors and diabetes risk. Random Forests allow the importance of the predictors to be ranked. SVMs evaluate non-linear relationships in the data and how well the predictors can classify between Diabetic and Non-Diabetic. The dataset was split into a train and test set with 80% of the data used for training and 20% used for testing.
+
+To evaluate each of the model’s performance a variety of metrics were used. Accuracy was calculated to measure the overall proportion of correctly classified individuals. Precision was calculated to show the proportion of predicted positive cases that were correct, and recall was used as it assesses the proportion of actual positive cases that were identified correctly. An F1 score was also calculated which is the mean of both precision and recall. When evaluating the importance of the predictor odds ratios were calculated within Logistic Regression to quantify the effect each variable has on the risk of diabetes. Within the Random Forest Model, feature importance scores were generated which allows ranking of the predictors based on their contribution to the model’s accuracy.
+
+
+## **Data**
+
+The dataset used in this project was sourced online from Kaggle [@Rahman:2024]. This dataset provided medical attributes from female patients along with an outcome variable that indicates whether the patient has diabetes or not. The attributes that were collected were; The number of times the patient had been pregnant (Pregnancies), Plasma glucose concentration after a 2-hour oral glucose tolerance test (Glucose), Diastolic blood pressure in mm Hg (BloodPressure), Tricep skinfold thickness in mm (SkinThickness), 2-hour serum insulin in mu U/ml (Insulin), Body mass index (BMI), The likelihood of diabetes based on family history (DiabetesPedigreeFunction), and age of the patient in years (Age).
+
+To prepare this dataset for the analysis, missing values required handling, and continuous variables needed to be scaled to standardize their ranges. This was done by replacing all missing values with the mean for the variable. Scaling was completed by performing z-score normalization which transformed each value into the number of standard deviations away from the mean.
+
+## **Results and Discussion**
+```{r, warning = FALSE}
+# Data Cleaning and EDA.
+diabetes_data = read_csv("diabetes.csv", show_col_types = FALSE) #Import the data
+diabetes_data$Outcome = as.factor(diabetes_data$Outcome) #Ensure Outcome is a factor
+
+#Managing missing values
+diabetes_data = diabetes_data %>% #Replace all missing values with the means of those rows.
+  mutate(across(
+    where(is.numeric) & !c("Pregnancies", "Outcome"),
+    ~ ifelse(. == 0, mean(.[. != 0], na.rm = TRUE), .) #if variable = 0 then replace with the mean of the column
+  ))
+
+#Create temp dataframe for summary table excluding outcome
+temp = select(diabetes_data, -Outcome)
+```
+
+```{r, results='asis'}
+# Create a summary table using sumtable()
+st(temp, col.breaks = 8,
+   summ =
+     c('notNA(x)', 'mean(x)', 
+       'median(x)', 'sd(x)', 
+       'min(x)', 'max(x)'),
+   summ.names =
+     c('N', 'Mean', 'Median', 'SD', 'Min', 'Max'),
+    , out= "latex"
+)
+```
+
+Table 1 shows the summary statistics for the cleaned dataset, consisting of 392 individuals. Metrics including mean, median, standard deviation (SD), minimum, and maximum values will give an overview of the factors that contribute to diabetes. These metrics can show the factor's distribution and variability allowing understanding of the dataset.
+
+```{r, fig.align='left'}
+#Creating grouped df for stacked bar plots on Age
+grouped_df_age = diabetes_data %>%
+  mutate(Age_cat = case_when(
+    Age >= 0 & Age <= 9 ~ "0–9",
+    Age >= 10 & Age <= 19 ~ "10–19",
+    Age >= 20 & Age <= 29 ~ "20–29",
+    Age >= 30 & Age <= 39 ~ "30–39",
+    Age >= 40 & Age <= 49 ~ "40–49",
+    Age >= 50 & Age <= 59 ~ "50–59",
+    Age >= 60 & Age <= 69 ~ "60–69",
+    Age >= 70 & Age <= 79 ~ "70–79",
+    Age >= 80 & Age <= 89 ~ "80–89" #Group data into categories
+    )) %>% group_by(Age_cat, Outcome) %>%
+  summarise(Count = n(), .groups = "drop") %>%
+  group_by(Age_cat) %>%
+  mutate(Percentage = Count / sum(Count) * 100)
+
+#Create Stacked Bar Plot
+p1 = ggplot(grouped_df_age, aes(x = Age_cat, y = Percentage, fill = as.factor(Outcome))) +
+  geom_bar(stat = "identity", position = "stack") +  
+  labs(
+    x = "Age",
+    y = "Percentage",
+    fill = "Diabetes Status",
+  ) +
+  scale_fill_manual(values = c("lightgrey", "black"), labels = c("No Diabetes", "Diabetes")) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+  )
+
+#Creating grouped df for stacked bar plot on BMI
+grouped_df_BMI = diabetes_data %>%
+  mutate(BMI_cat = case_when(
+    BMI >= 18 & BMI < 20 ~ "18-19",
+    BMI >= 20 & BMI < 30 ~ "20-29",
+    BMI >= 30 & BMI < 40 ~ "30-39",
+    BMI >= 40 & BMI < 50 ~ "40-49",
+    BMI >= 50 & BMI < 60 ~ "50-59",
+    BMI >= 60 & BMI <= 68 ~ "60-68" #Group data into categories
+  )) %>%
+  group_by(BMI_cat, Outcome) %>%
+  summarise(Count = n(), .groups = "drop") %>%
+  group_by(BMI_cat) %>%
+  mutate(Percentage = Count / sum(Count) * 100)
+
+# Generate the stacked bar plot
+p2 = ggplot(grouped_df_BMI, aes(x = BMI_cat, y = Percentage, fill = as.factor(Outcome))) +
+  geom_bar(stat = "identity", position = "stack") +  
+  labs(
+    x = "BMI",
+    y = "Percentage",
+    fill = "Diabetes Status",
+  ) +
+  scale_fill_manual(values = c("lightgrey", "black"), labels = c("No Diabetes", "Diabetes")) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+  )
+
+#Creating grouped df for stacked bar plot on Glucose
+grouped_df_glu = diabetes_data %>%
+  mutate(glu_cat = case_when(
+    Glucose >= 50 & Glucose <= 75 ~ "50-75",
+    Glucose >= 76 & Glucose <= 100 ~ "76-100",
+    Glucose >= 101 & Glucose <= 125 ~ "101-125",
+    Glucose >= 126 & Glucose <= 150 ~ "126-150",
+    Glucose >= 151 & Glucose <= 175 ~ "151-175",
+    Glucose >= 176 & Glucose <= 200 ~ "176-200" #Group data into categories
+  )) %>%
+  mutate(glu_cat = factor(glu_cat, levels = c("50-75", "76-100", "101-125", "126-150", "151-175", "176-200"))) %>% #Make sure glu_cat is in factor in a specific order
+  group_by(glu_cat, Outcome) %>%
+  summarise(Count = n(), .groups = "drop") %>%
+  group_by(glu_cat) %>%
+  mutate(Percentage = Count / sum(Count) * 100)
+
+# Generate the plot
+p3 = ggplot(grouped_df_glu, aes(x = glu_cat, y = Percentage, fill = as.factor(Outcome))) +
+  geom_bar(stat = "identity", position = "stack") +  
+  labs(
+    x = "Glucose (mg/dl)",
+    y = "Percentage",
+    fill = "Diabetes Status",
+  ) +
+  scale_fill_manual(values = c("lightgrey", "black"), labels = c("No Diabetes", "Diabetes")) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+  )
+
+#Creating grouped df for stacked bar plot on Insulin
+grouped_df_in = diabetes_data %>%
+  mutate(in_cat = case_when(
+    Insulin >= 0 & Insulin <= 200 ~ "0-200",
+    Insulin >= 201 & Insulin <= 400 ~ "201-400",
+    Insulin >= 401 & Insulin <= 600 ~ "401-600",
+    Insulin >= 601 & Insulin <= 800 ~ "601-800",
+    Insulin >= 801 & Insulin <= 1000 ~ "801-1000", #Group data into categories
+  )) %>%
+  group_by(in_cat, Outcome) %>%
+  summarise(Count = n(), .groups = "drop") %>%
+  group_by(in_cat) %>%
+  mutate(Percentage = Count / sum(Count) * 100)
+
+# Generate the plot
+p4 = ggplot(grouped_df_in, aes(x = in_cat, y = Percentage, fill = as.factor(Outcome))) +
+  geom_bar(stat = "identity", position = "stack") +  
+  labs(
+    x = "Insulin (mu U/ml)",
+    y = "Percentage",
+    fill = "Diabetes Status",
+  ) +
+  scale_fill_manual(values = c("lightgrey", "black"), labels = c("No Diabetes", "Diabetes")) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+  )
+
+#Combine plots with a single caption
+grid.arrange(p1, p2, p3, p4, ncol = 2, 
+  bottom = textGrob("Figure 1: Distribution of Diabetes Status Across Key Factors", gp = gpar(fontsize = 9), hjust = 0.15), 
+  heights = c(1, 1) 
+)
+```
+Figure 1 shows the percentage of diabetes cases across four key factors; age, BMI, glucose, and insulin. All factors show that with increases in the factor, there is an increase in the percentage of cases that have diabetes. This aligns with existing literature. Age has been shown to be a significant factor, as older individuals are at higher risk of developing diabetes due to declining pancreatic function and increased insulin resistance [@Dominguez:2024]. BMI is correlated with diabetes risk, with obesity being a major contributor to insulin resistance and type 2 diabetes development [@Guh:2009]. Elevated glucose levels are central to diabetes diagnosis, as they reflect poor glucose metabolism [@American_Diabetes_Association:2021]. Finally, high insulin levels indicate insulin resistance, which is a hallmark of diabetes progression [@DeFronzo:2001].
+
+```{r}
+#Scaling
+continuous_features = names(diabetes_data)[sapply(diabetes_data, is.numeric) & names(diabetes_data) != "Outcome"] #create df with only continuous variables
+diabetes_data[continuous_features] = scale(diabetes_data[continuous_features]) #Z-score normalisation
+```
+```{r}
+#Split the dataset into test and training data
+set.seed(123)
+split = sample(1:nrow(diabetes_data), 0.8 * nrow(diabetes_data))
+train_data = diabetes_data[split,]
+test_data = diabetes_data[-split,]
+
+```
+
+### Random Forest Model
+
+```{r, results = FALSE, message = FALSE, fig.width=7, fig.height=4}
+#Random Forest Model
+rf_model = randomForest(Outcome ~ ., data = train_data, ntree = 1000, importance = TRUE) #Create the RF model
+
+print(rf_model) #Used to see OOB error rates to determine best number of trees
+
+rf_predictions = predict(rf_model, newdata = test_data) #Tests the RF model by making predictions on the test data.
+conf_matrix = confusionMatrix(rf_predictions, test_data$Outcome) #Creates the confusion matrix
+accuracyRF = conf_matrix$overall["Accuracy"] #Get the accuracy of the RF model
+#Generate importance values
+importance_values = importance(rf_model)
+
+feature_importance = data.frame(
+  Feature = rownames(importance_values),
+  Importance = importance_values[, 2] 
+) %>%
+  arrange(desc(Importance))
+
+#Plot the feature importance bar graph
+ggplot(feature_importance, aes(x = reorder(Feature, Importance), y = Importance)) +
+  geom_bar(stat = "identity", fill = "grey", colour = "black") +
+  coord_flip() +
+  labs(
+       x = "Factor",
+       y = "Importance",
+       caption = "Figure 2: Importance of Features Based on Mean Decrease in Accuracy") +
+  theme_minimal()
+
+#AUC
+library(pROC)   # For AUC calculation
+rf_prob <- predict(rf_model, newdata = test_data, type = "prob")[,2]  # Probability for the positive class
+roc_obj <- roc(test_data$Outcome, rf_prob)  # Create ROC curve object
+auc_value_RF <- round(auc(roc_obj),3)
+print(auc_value_RF)
+
+# ROC Curve
+# Plot ROC Curve
+ggplot(data = data.frame(TPR = rev(roc_obj$sensitivities), FPR = rev(1 - roc_obj$specificities)), 
+       aes(x = FPR, y = TPR)) +
+  geom_line(color = "blue", size = 1) +  # ROC curve
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +  # Diagonal reference line
+  labs(
+    title = "ROC Curve for Random Forest Model",
+    x = "False Positive Rate (1 - Specificity)",
+    y = "True Positive Rate (Sensitivity)",
+    caption = paste("AUC:", auc_value_RF)
+  ) +
+  theme_minimal()
+
+# Conf Matrix
+# Convert confusion matrix to a data frame for visualization
+conf_df <- as.data.frame(conf_matrix$table)
+
+# Rename columns for better readability
+colnames(conf_df) <- c("Reference", "Prediction", "Freq")
+
+# Plot the confusion matrix
+ggplot(conf_df, aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile(color = "black") +  # Tile plot for heatmap effect
+  geom_text(aes(label = Freq), size = 6) +  # Show frequency values
+  scale_fill_gradient(low = "white", high = "darkgrey") +  # Color scale
+  labs(
+    x = "Predicted Class",
+    y = "Actual Class",
+    fill = "Frequency",
+    caption = "Figure: Confusion Matrix for the Random Forest Model"
+  ) +
+  theme_minimal()
+
+#Performance Metrics
+accuracyRF <- round(conf_matrix$overall["Accuracy"],3)
+precisionRF <- round(conf_matrix$byClass["Pos Pred Value"],3)
+recallRF <- round(conf_matrix$byClass["Sensitivity"],3)
+f1_scoreRF <- round(2 * (precisionRF * recallRF) / (precisionRF + recallRF),3)
+
+```
+
+The random forest model trained in this study highlights glucose, age, and insulin as the most significant predictors of diabetes (Figure 2). These findings are consistent with existing literature, reinforcing the understanding of these variables as critical indicators in diabetes diagnosis.
+
+Glucose being the most significant predictor of diabetes is consistent with prior research which shows serum glucose levels are often used for diagnosing diabetes due to their role in metabolic processes. This is proven by clinical diagnostic tools like fasting plasma glucose and oral glucose tolerance tests which use glucose as the primary marker [@American_Diabetes_Association:2021]. BMI was shown to be the second most important factor within our model, this is supported a study by @Moghaddam:2024 showed it to be the most important factor within its random forest model showing that BMI is a very important predictor of diabetes.
+
+On the other hand, a factor that is usually identified to be large contributors to diabetes; body fat, measured by skin thickness, showed lower importance scores in this model. This could be attributed to multicollinearity with glucose since glucose levels may mediate their relationship with diabetes [@Wang:2024]. Blood pressure is often associated with diabetes shown by a study by @Noroozi:2024 which showed that high and fluctuating blood pressure are significant contributors to diabetes. However, this was indicated to have the lowest importance score in this model. 
+
+The ROC curve for the Random Forest model evaluates its ability to classify diabetic and non-diabetic individuals. With an AUC of 0.846, the model demonstrates strong predictive performance, correctly distinguishing cases 84.6% of the time. The steep rise in the curve at lower false positive rates indicates good sensitivity, while the gradual flattening suggests a balance between specificity and recall, supported by an F1 score of 0.827.
+
+### Logistic Regression Model
+
+```{r, message = FALSE, results = FALSE, fig.width=6, fig.height=3}
+diabetes_data$Outcome = factor(diabetes_data$Outcome, levels = c(0, 1), labels = c(0, 1)) #Ensure Outcome is a factor
+
+#Split the dataset into test and training data
+set.seed(123)
+split = sample(1:nrow(diabetes_data), 0.8 * nrow(diabetes_data))
+train_data = diabetes_data[split, ]
+test_data = diabetes_data[-split, ]
+
+LR_model = glm(Outcome ~ ., data = train_data, family = "binomial") #Code to create the LR model
+
+#Code to evaluate the model
+LR_probabilities = predict(LR_model, newdata = test_data, type = "response") # Predict probabilities on the test dataset
+LR_predictions = ifelse(LR_probabilities > 0.5, 1, 0) # Convert probabilities to factor predictions. if probability is over 0.5 outcome is 1 if not it is 0
+conf_matrix = table(Predicted = LR_predictions, Actual = test_data$Outcome) #Create conf matrix
+
+# Calculate odds ratios
+odds_ratios <- exp(coef(LR_model))
+
+# Create dataframe for plotting
+odds_ratios_df <- data.frame(
+  Predictor = names(odds_ratios),
+  Odds_Ratio = odds_ratios,
+  Lower_CI = exp(confint(LR_model)[, 1]),  # Lower 95% CI
+  Upper_CI = exp(confint(LR_model)[, 2])   # Upper 95% CI
+)
+
+# Remove intercept for better visualization
+odds_ratios_df <- odds_ratios_df %>% filter(Predictor != "(Intercept)")
+
+# Create the forest plot
+ggplot(odds_ratios_df, aes(x = reorder(Predictor, Odds_Ratio), y = Odds_Ratio)) +
+  geom_point(size = 4, color = "blue") +  # Point estimates for odds ratios
+  geom_errorbar(aes(ymin = Lower_CI, ymax = Upper_CI), width = 0.2, color = "black") +  # Confidence intervals
+  geom_hline(yintercept = 1, linetype = "dashed", color = "red") +  # Reference line at OR = 1
+  coord_flip() +  # Flip coordinates for a horizontal forest plot
+  labs(
+    x = "Predictors",
+    y = "Odds Ratio (95% CI)",
+    title = "Forest Plot of Odds Ratios from Logistic Regression",
+    caption = "Confidence intervals computed at 95% level"
+  ) +
+  theme_minimal()
+
+# Conf Matrix
+
+# Convert confusion matrix to a data frame for visualization
+conf_df <- as.data.frame(conf_matrix)
+
+# Rename columns for better readability
+colnames(conf_df) <- c("Reference", "Prediction", "Freq")
+
+# Plot the confusion matrix
+ggplot(conf_df, aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile(color = "black") +  # Tile plot for heatmap effect
+  geom_text(aes(label = Freq), size = 6) +  # Show frequency values
+  scale_fill_gradient(low = "white", high = "darkgrey") +  # Color scale
+  labs(
+    x = "Predicted Class",
+    y = "Actual Class",
+    fill = "Frequency",
+    caption = "Figure: Confusion Matrix for the Logistic Regression Model"
+  ) +
+  theme_minimal()
+
+
+# Compute ROC curve and AUC score
+roc_obj <- roc(test_data$Outcome, LR_probabilities, levels = c(0, 1), direction = "<")
+auc_value_LR <- round(auc(roc_obj),3)
+
+# Print AUC value
+print(paste("AUC:", auc_value_LR))
+
+# Plot ROC Curve
+ggplot(data = data.frame(TPR = rev(roc_obj$sensitivities), FPR = rev(1 - roc_obj$specificities)), 
+       aes(x = FPR, y = TPR)) +
+  geom_line(color = "blue", size = 1) +  # ROC curve
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +  # Reference diagonal
+  labs(
+    title = "ROC Curve for Logistic Regression Model",
+    x = "False Positive Rate (1 - Specificity)",
+    y = "True Positive Rate (Sensitivity)",
+    caption = paste("AUC:", auc_value_LR)
+  ) +
+  theme_minimal()
+
+#Performance Metrics
+accuracyLR = round(sum(diag(conf_matrix)) / sum(conf_matrix),3) #Calculate the accuracy of the model
+
+# Define confusion matrix values
+TP <- 29  # True Positives (Diabetic correctly predicted)
+FP <- 23  # False Positives (Non-Diabetic incorrectly predicted as Diabetic)
+FN <- 12  # False Negatives (Diabetic incorrectly predicted as Non-Diabetic)
+TN <- 90  # True Negatives (Non-Diabetic correctly predicted)
+
+# Calculate Precision
+precisionLR <- round(TP / (TP + FP),3)
+
+# Calculate Recall (Sensitivity)
+recallLR <- round(TP / (TP + FN),3)
+
+f1_scoreLR <- round(2 * (precisionLR * recallLR) / (precisionLR + recallLR),3)
+```
+
+The logistic regression model shows a quantitative understanding of how the key predictors affect diabetes risk (Figure 3). Odds ratios were calculated allowing an easy interpretation of the relationships between the factors and diabetes risk. The odds ratio indicates the increase in the risk of diabetes for a one-unit increase in that variable.
+
+The model was similar to the random forest model as glucose and BMI were also identified as the two most important predictors of diabetes. The odds ratio of glucose shows a strong, positive association with diabetes risk, with an odds ratio of 3.2 indicating that with a one-unit increase in 2-hour serum glucose levels, the risk of diabetes increases by over 300%. These findings are supported by literature which states that glucose has a central role in hyperglycemia and insulin resistance [@Lu:2024]. @Flowers:2024 also supports these findings, indicating the importance of glucose control in reducing diabetes risk. 
+
+The second most important predictor BMI was shown to increase diabetes risk by 56% with a one-unit increase. Literature supports this by showing that obesity is a contributing factor to insulin resistance by disrupting the body's glucose metabolism [@Torres-Torres:2024]. The findings from this model are like prior research and highlight the need to address obesity in public health interventions in preventing diabetes. 
+
+This model identified pregnancies as the third most influential factor in diabetes risk, contradicting the logistic regression model which shows it as fifth. Pregnancies showed an odds ratio of 1.49, indicating that with an increase of one pregnancy, the risk of diabetes increases by 49%. Literature supports these conclusions as a meta-analysis reported that women with a history of gestational diabetes, a common complication within pregnancies, have a significantly increased risk of developing type 2 diabetes later in life [@Diaz-Santana:2022].
+
+Although, this model showed high predictive accuracy of 0.760, this model showed poor performance when predicting positive cases as the recall of the model was only 0.558 displaying the ability of the model to capture only 55.8% of the actual diabetic cases. The precision of the model was shown to be 0.707 suggesting that the model was moderately effective at classifying diabetic cases from non-diabetic cases when predicting positive outcomes. The F1 score shows that the model lack the trade-off between precision and recall. These metrics show the need for hyperparameter tuning within more complicated models to refine their predictions as these low values may lead to false negatives which can lead to undue health risks and false positives which can put a strain on the healthcare systems.
+
+The ROC curve for the Logistic Regression model evaluates its classification performance in distinguishing diabetic and non-diabetic individuals. The model achieved an AUC of 0.843, indicating strong predictive ability, though Random Forest (AUC = 0.846) model.
+
+The curve demonstrates a steep rise at lower false positive rates, suggesting good sensitivity, but the overall performance is slightly less optimal compared to more complex models. Improvements through feature selection, regularization, or interaction terms could enhance performance. Logistic Regression remains a strong baseline model due to its interpretability and stability.
+
+### Support Vector Machine Model
+
+```{r, results = FALSE, fig.width=7, fig.height=4}
+#SVM Model
+svm_model <- svm(Outcome ~ ., data = train_data, gamma = 0.1, probability = TRUE)
+svm_predictions = predict(svm_model, newdata = test_data)
+svm_probabilities <- predict(svm_model, newdata = test_data, probability = TRUE)
+conf_matrix = confusionMatrix(svm_predictions, test_data$Outcome) #Creates the confusion matrix
+
+prob_matrix <- attr(svm_probabilities, "probabilities")
+svm_prob <- prob_matrix[, 1]
+
+# Compute ROC curve and AUC score
+roc_obj <- roc(test_data$Outcome, svm_prob, levels = c(0, 1), direction = "<")
+auc_value_SVM <- round(auc(roc_obj),3)
+
+# Print AUC value
+print(paste("AUC:", auc_value_SVM))
+
+# Plot ROC Curve
+ggplot(data = data.frame(TPR = rev(roc_obj$sensitivities), FPR = rev(1 - roc_obj$specificities)), 
+       aes(x = FPR, y = TPR)) +
+  geom_line(color = "blue", size = 1) +  # ROC curve
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +  # Reference diagonal
+  labs(
+    title = "ROC Curve for SVM Model",
+    x = "False Positive Rate (1 - Specificity)",
+    y = "True Positive Rate (Sensitivity)",
+    caption = paste("AUC:", auc_value_SVM)
+  ) +
+  theme_minimal()
+
+#Code to create the confusion matrix
+conf_df = as.table(conf_matrix$table)%>%
+  as.data.frame() #converts confusion matrix into a df
+
+colnames(conf_df) = c("Reference", "Prediction", "Freq") #alter conf_df column names
+
+#Plots confusion matrix
+ggplot(conf_df, aes(x = Prediction, y = Reference, fill = Freq)) +
+  geom_tile(color = "black") +
+  geom_text(aes(label = Freq), size = 6) +
+  scale_fill_gradient(low = "white", high = "darkgrey") +
+  labs(
+    x = "Predicted Class",
+    y = "Actual Class",
+    fill = "Frequency", 
+    caption = "Figure 5: Confusion Matrix for the SVM model"
+  ) +
+  theme_minimal() 
+
+
+# Perfomance Metrics
+accuracySVM = round(conf_matrix$overall["Accuracy"],3)
+precisionSVM = round(conf_matrix$byClass["Pos Pred Value"],3)
+recallSVM = round(conf_matrix$byClass["Sensitivity"],3)
+f1_scoreSVM = round(2 * (precisionSVM * recallSVM) / (precisionSVM + recallSVM),3)
+```
+
+The final model that was implemented was an SVM model which was used to evaluate the effectiveness of using the factors for predicting diabetes. This model showed good predictive ability for diabetes classification, the accuracy of this model was 0.76 indicating that the model accurately predicted 76% of the cases (Figure 4). 
+
+The ROC curve for the SVM model evaluates its classification performance in identifying diabetic and non-diabetic individuals. The model achieved an AUC of 0.855, indicating strong predictive power, surpassing Logistic Regression (AUC = 0.843) and Random Forest (AUC = 0.846) in this dataset.
+
+The steep increase at low false positive rates suggests good sensitivity, meaning the model correctly classifies diabetic cases with fewer misclassifications. However, further improvements could be made through hyperparameter tuning, feature selection, or alternative kernels. Overall, SVM proves to be the best-performing model in this study.
+
+From this model, a confusion matrix was developed (Figure 4). This figure showed that out of 41 actual diabetic cases within the test set, 28 were correctly identified as diabetic with only 13 being misclassified as non-diabetic. Within the 113 actual non-diabetic cases within the test set, only 24 were misclassified as diabetic and 89 were correctly classified. These results show that the model was very effective at classifying the diabetes outcome but with a slight bias to the majority case.
+
+
+### Model Evaluation and Comparisons
+
+```{r, results = FALSE, fig.width=7, fig.height=2}
+#Create accuracy  df
+accuracy_df = data.frame(
+  Model = c("Random Forest", "Logistic Regression", "SVM"),
+  Value = c(accuracyRF, accuracyLR, accuracySVM)
+)
+
+#Code to create bar graph showing accuracy for each model
+ggplot(accuracy_df, aes(x = Model, y = Value, fill = Model)) +
+  geom_bar(stat = "identity", color = "black") +
+  geom_text(aes(label = round(Value, 2)), vjust = -0.5, size = 5) + 
+  labs(
+    x = "Model",
+    y = "Value", 
+    caption = "Figure 6: Accuracy for each model") +
+  theme_minimal() +  
+  ylim(0, 1.3)  +
+  scale_fill_grey(start = 0.9, end = 0.1)
+
+#Table of all performance metrics
+
+# Create a dataframe for the performance metrics
+performance_df <- data.frame(
+  Model = c("Random Forest", "SVM", "Logistic Regression"),
+  Accuracy = c(accuracyRF, accuracySVM, accuracyLR),
+  Precision = c(precisionRF, precisionSVM, precisionLR),
+  Recall = c(recallRF, recallSVM, recallLR),
+  F1_Score = c(f1_scoreRF, f1_scoreSVM, f1_scoreLR),
+  AUC = c(auc_value_RF, auc_value_SVM, auc_value_LR)
+)
+```
+
+```{r, results = 'asis'}
+# Display table using kable for better formatting
+tablePerf = kable(performance_df, caption = "Performance Metrics for Each Model")
+
+tablePerf
+```
+
+Figure 6 shows the accuracy of each model in classifying diabetes status. In this study, logistic regression shows the highest accuracy of 0.77 indicating that it correctly classified 77% of the cases. This model performed better than the other two models which both achieved an accuracy of 0.76, indicating the need for tuning and larger samples to improve the accuracy of these more complex models and logistic regression's simplicity could explain its increase in performance, however logistic regression has the lowest recall and AUC values, indicating that SVMs and random forests are more applicable t diabetes onset prediction. These models are outperformed by a study by @Akula:2019 which showed accuracy scores of 0.81 for an SVM model and 0.82 random forest model using similar factors reiterating the need for hyper parameter tuning for these models. Our logistic regression model was similar to a study by @Lai:2019 which calculated an accuracy of only 0.76 within their model however, using different factors including age, sex, fasting blood glucose, BMI, high-density lipoprotein, triglycerides, blood pressure, and low-density lipoprotein. 
+
+
+### Implications, Limitations and Future Work
+
+This research holds many practical implications. Using the most important factors as the focus in screening tools could lead to diabetes prediction tools being more efficient and cost-effective, this can reduce medical complications and therefore strain on healthcare systems. Factors such as BMI and age show the possible use of exercise intervention schemes in reducing diabetes risk. These conclusions may be valuable as they can aid healthcare providers in implementing tailored prevention strategies using predictive models to identify high-risk individuals.
+
+However, some limitations come with these findings. Due to the relatively small dataset, the conclusions lack some generalisability to a larger more diverse population. Furthermore, some factors such as diet and exercise which are seen to be large contributors to diabetes were excluded from this dataset. Also, the models used within the analysis have some shortcomings; logistic regression assumes a linear relationship between the factors and log-odds which could oversimplify the relationship. SVMs assume kernel-based separability which may not show the complex relationships in the data. Also, tuning methods e.g. grid search or cross-validation, were not implemented within the models which can reduce the accuracy of the models.  
+
+Future work should focus on rectifying the limitations of this current study. Any future research should include a larger more diverse dataset to ensure that the conclusions are applicable to the whole population not just females. Also, other factors such as diet and physical activity levels could've been used to show a more holistic view of the factors that affect diabetes risk. Furthermore, more advanced machine learning techniques could've been implemented such as ensemble methods, neural networks, or deep learning to enhance the accuracy of the conclusions. Finally, the models could've been implemented using cross-validation or grid search methods to increase the accuracy of the more complex models
+ 
+## **Conclusion**
+
+This study used three machine learning models to determine the most important factors in the prediction of diabetes and how well these factors predict diabetes. Glucose and BMI were found to be the most influential predictors in both the logistic regression model and the random forest, this is supported by current literature focusing on diabetes. 
+
+These findings show the potential for machine learning to be an important component in diabetes prediction in the future.
+
+However, this study was not without its own limitations. The relatively small dataset which only focused on women will restrict the ability for the conclusions to be generalized to a larger population, but the study demonstrated the potential for machine learning to be used in healthcare and future research should focus on broader datasets to make the models more accurate.
+
+\newpage
+## **References**
