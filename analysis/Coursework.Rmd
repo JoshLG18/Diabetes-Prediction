@@ -5,7 +5,7 @@ output:
   pdf_document: default
 author: "**720017170**"
 subtitle: "**Word Count - 2282**"
-bibliography: references.bib  
+bibliography: references.bib
 csl: harvard-exeter.csl
 classoption: titlepage
 ---
@@ -59,7 +59,7 @@ To prepare this dataset for the analysis, missing values required handling, and 
 ## **Results and Discussion**
 ```{r, warning = FALSE}
 # Data Cleaning and EDA.
-diabetes_data = read_csv("diabetes.csv", show_col_types = FALSE) #Import the data
+diabetes_data = read_csv("../data/diabetes.csv", show_col_types = FALSE) #Import the data
 diabetes_data$Outcome = as.factor(diabetes_data$Outcome) #Ensure Outcome is a factor
 
 #Managing missing values

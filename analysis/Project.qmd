@@ -69,7 +69,7 @@ To prepare this dataset for the analysis, missing values required handling, and 
 
 ```{python}
 # Load the dataset
-diabetes_data = pd.read_csv("diabetes.csv")  # Import the data
+diabetes_data = pd.read_csv("../data/diabetes.csv")  # Import the data
 
 # Ensure Outcome is treated as a categorical variable
 diabetes_data['Outcome'] = diabetes_data['Outcome'].astype('category')
@@ -127,7 +127,7 @@ These summary statistics provide an overview of the data distribution and variab
 ```{python}
 
 # Load dataset
-diabetes_data = pd.read_csv("diabetes.csv")
+diabetes_data = pd.read_csv("../data/diabetes.csv")
 
 # Ensure 'Outcome' is categorical
 diabetes_data['Outcome'] = diabetes_data['Outcome'].astype('category')
@@ -163,7 +163,7 @@ The correlation between Insulin (r = 0.13) and diabetes, while positive, is weak
 
 
 # Load dataset
-diabetes_data = pd.read_csv("diabetes.csv")
+diabetes_data = pd.read_csv("../data/diabetes.csv")
 
 # Ensure 'Outcome' is categorical
 diabetes_data['Outcome'] = diabetes_data['Outcome'].astype('category')
@@ -241,7 +241,7 @@ Figure 2 shows the percentage of diabetes cases across four key factors; age, BM
 
 ```{python}
 # Reload the data in and scale.
-diabetes_data = pd.read_csv("diabetes.csv")
+diabetes_data = pd.read_csv("../data/diabetes.csv")
 
 # Ensure 'Outcome' is categorical
 diabetes_data['Outcome'] = diabetes_data['Outcome'].astype('category')
